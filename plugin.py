@@ -41,16 +41,15 @@ class BasePlugin:
             Domoticz.Debug("onStart called")
             DumpConfig()            
             DumpSettings()
-            
-        Domoticz.Transport(Transport="TCP/IP", Address=Parameters["Address"], Port=Parameters["Port"])
-        Domoticz.Protocol("HTTP")
+
+        self.VenstarConn = Domoticz.Connection(Name="Venstar", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
+        self.VenstarConn.Connect()
         Domoticz.Heartbeat(int(Parameters["Mode1"]))
-        Domoticz.Connect()
 
     def onStop(self):
         Domoticz.Debug("onStop called")
 
-    def onConnect(self, Status, Description):
+    def onConnect(self, Connection, Status, Description):
         Domoticz.Debug("onConnect called")
         if (Status == 0):
             self.isConnected = True
@@ -73,7 +72,7 @@ class BasePlugin:
             Domoticz.Log("Failed to connect ("+str(Status)+") to: "+Parameters["Address"])
             Domoticz.Debug("Failed to connect ("+str(Status)+") to: "+Parameters["Address"]+" with error: "+Description)
 
-    def onMessage(self, Data, Status, Extra):
+    def onMessage(self, Connection, Data, Status, Extra):
         Domoticz.Debug("onMessage called")
         jsonStr = Data.decode("utf-8", "ignore")
 
@@ -137,7 +136,7 @@ class BasePlugin:
             }).encode("utf-8")
             headers = { 'Content-Type': 'application/x-www-form-urlencoded', \
                         'Content-Length' : "%d"%(len(params)) }
-            Domoticz.Send(params, "POST", "/control", headers)            
+            self.VenstarConn.Send(params, "POST", "/control", headers)            
 
         if (Unit == 9): # schedule
             if (Command == "On"):
@@ -153,7 +152,7 @@ class BasePlugin:
                 UpdateDevice(Unit,0,"0")
             headers = { 'Content-Type': 'application/x-www-form-urlencoded', \
                         'Content-Length' : "%d"%(len(params)) }
-            Domoticz.Send(params, "POST", "/settings", headers)
+            self.VenstarConn.Send(params, "POST", "/settings", headers)
 
         if (Unit == 10): # away
             if (Command == "On"):
@@ -169,19 +168,19 @@ class BasePlugin:
                 UpdateDevice(Unit,0,"0")
             headers = { 'Content-Type': 'application/x-www-form-urlencoded', \
                         'Content-Length' : "%d"%(len(params)) }
-            Domoticz.Send(params, "POST", "/settings", headers)
+            self.VenstarConn.Send(params, "POST", "/settings", headers)
 
 
     def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
         Domoticz.Debug("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
 
-    def onDisconnect(self):
+    def onDisconnect(self, Connection):
         Domoticz.Debug("onDisconnect called")
         self.isConnected = False
 
     def onHeartbeat(self):
         Domoticz.Debug("onHeartbeat called")
-        if (self.isConnected == True):
+        if (self.VenstarConn.Connected() == True):
             url = '/query/info'
             data = ''
             headers = { 'Content-Type': 'text/xml; charset=utf-8', \
@@ -190,7 +189,7 @@ class BasePlugin:
                         'Host': Parameters["Address"]+":"+Parameters["Port"], \
                         'User-Agent':'Domoticz/1.0', \
                         'Content-Length' : "%d"%(len(data)) }
-            Domoticz.Send(data, "GET", url)
+            self.VenstarConn.Send(data, "GET", url)
         else:
             Domoticz.Connect()
 
@@ -205,13 +204,13 @@ def onStop():
     global _plugin
     _plugin.onStop()
 
-def onConnect(Status, Description):
+def onConnect(Connection, Status, Description):
     global _plugin
-    _plugin.onConnect(Status, Description)
+    _plugin.onConnect(Connection, Status, Description)
 
-def onMessage(Data, Status, Extra):
+def onMessage(Connection, Data, Status, Extra):
     global _plugin
-    _plugin.onMessage(Data, Status, Extra)
+    _plugin.onMessage(Connection, Data, Status, Extra)
 
 def onCommand(Unit, Command, Level, Hue):
     global _plugin
@@ -221,9 +220,9 @@ def onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile):
     global _plugin
     _plugin.onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile)
 
-def onDisconnect():
+def onDisconnect(Connection):
     global _plugin
-    _plugin.onDisconnect()
+    _plugin.onDisconnect(Connection)
 
 def onHeartbeat():
     global _plugin
@@ -269,4 +268,5 @@ def UpdateDevice(Unit, nValue, sValue):
             Devices[Unit].Update(nValue=nValue, sValue=str(sValue))
             Domoticz.Log("Update "+str(nValue)+":'"+str(sValue)+"' ("+Devices[Unit].Name+")")
     return
+
 
